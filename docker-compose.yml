@@ -1,0 +1,13 @@
+services:
+  dratings-scraper:
+    build: .
+    container_name: dratings-scraper
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - root_default
+
+networks:
+  root_default:
+    external: true
