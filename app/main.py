@@ -39,7 +39,8 @@ def get_games(sport: str):
     )
 
 
-@app.get("/game/{sport}/{game_id}", response_model=GameDetailResponse)
+@app.get("/games/{sport}/{game_id}", response_model=GameDetailResponse)
+@app.get("/game/{sport}/{game_id}", response_model=GameDetailResponse, include_in_schema=False)
 def get_game(sport: str, game_id: str):
     sport = sport.lower()
     if sport not in SPORT_SLUGS:
