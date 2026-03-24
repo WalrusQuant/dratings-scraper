@@ -49,6 +49,7 @@ def fetch_games_page(sport: str) -> BeautifulSoup:
     _rate_limit()
     resp = requests.get(url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
+    resp.encoding = "utf-8"
     return BeautifulSoup(resp.text, "lxml")
 
 
@@ -58,6 +59,7 @@ def fetch_game_page(sport: str, game_id: str) -> BeautifulSoup:
     _rate_limit()
     resp = requests.get(url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
+    resp.encoding = "utf-8"
     return BeautifulSoup(resp.text, "lxml")
 
 
