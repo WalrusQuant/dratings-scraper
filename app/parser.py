@@ -1,4 +1,6 @@
 import re
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from app.models import (
@@ -119,19 +121,30 @@ def parse_games_list(soup: BeautifulSoup, sport: str) -> list[GameSummary]:
             continue
         game_id = match.group(1)
 
-        # Date and time from <time> element
+        # Date and time from <time> element — datetime attr is UTC
         time_el = link.find("time", class_="time-long")
         date_str = ""
         time_str = ""
+        local_tz = ZoneInfo("America/Chicago")
         if time_el:
-            # Date is in the span, time is bare text after <br>
-            date_span = time_el.find("span")
-            date_str = _text(date_span) if date_span else ""
-            # Time: get all text, strip date part
-            full = time_el.get_text(separator="\n", strip=True)
-            parts = [p.strip() for p in full.split("\n") if p.strip()]
-            if len(parts) >= 2:
-                time_str = parts[-1]
+            dt_attr = time_el.get("datetime", "")
+            if dt_attr:
+                try:
+                    utc_dt = datetime.fromisoformat(dt_attr.replace("Z", "+00:00"))
+                    local_dt = utc_dt.astimezone(local_tz)
+                    date_str = local_dt.strftime("%m/%d/%Y")
+                    time_str = local_dt.strftime("%I:%M %p").lstrip("0")
+                except ValueError:
+                    pass
+
+            # Fallback to text if datetime attr missing or unparseable
+            if not time_str:
+                date_span = time_el.find("span")
+                date_str = _text(date_span) if date_span else date_str
+                full = time_el.get_text(separator="\n", strip=True)
+                parts = [p.strip() for p in full.split("\n") if p.strip()]
+                if len(parts) >= 2:
+                    time_str = parts[-1]
 
         # Cell 1: teams — two spans with class table-cell--mw
         team_spans = cells[1].select("span.table-cell--mw")
@@ -182,27 +195,32 @@ def parse_game_detail(soup: BeautifulSoup, sport: str, game_id: str) -> GameDeta
 
 def _parse_game_datetime(soup: BeautifulSoup) -> tuple[str, str]:
     """Extract date/time from time.time-long-heading element.
-    Text format: "11:10 PM • Mar 24, 2026", datetime attr: "2026-03-24T23:10:00Z"
+    The datetime attr is UTC — convert to America/Chicago.
     """
     date_str = ""
     time_str = ""
+    local_tz = ZoneInfo("America/Chicago")
 
     time_el = soup.select_one("time.time-long-heading")
     if time_el:
-        dt = time_el.get("datetime", "")
-        text = _text(time_el)
+        dt_attr = time_el.get("datetime", "")
 
-        # Parse date from datetime attr (YYYY-MM-DDTHH:MM:SSZ -> MM/DD/YYYY)
-        if dt:
-            m = re.match(r"(\d{4})-(\d{2})-(\d{2})", dt)
-            if m:
-                date_str = f"{m.group(2)}/{m.group(3)}/{m.group(1)}"
+        if dt_attr:
+            try:
+                utc_dt = datetime.fromisoformat(dt_attr.replace("Z", "+00:00"))
+                local_dt = utc_dt.astimezone(local_tz)
+                date_str = local_dt.strftime("%m/%d/%Y")
+                time_str = local_dt.strftime("%I:%M %p").lstrip("0")
+            except ValueError:
+                pass
 
-        # Parse time from text (before the bullet)
-        if "•" in text:
-            time_str = text.split("•")[0].strip()
-        elif text:
-            time_str = text.strip()
+        # Fallback to text if datetime attr missing or unparseable
+        if not time_str:
+            text = _text(time_el)
+            if "•" in text:
+                time_str = text.split("•")[0].strip()
+            elif text:
+                time_str = text.strip()
 
     return date_str, time_str
 
