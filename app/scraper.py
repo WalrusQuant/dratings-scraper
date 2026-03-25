@@ -1,5 +1,7 @@
 import time
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.dratings.com/predictor"
@@ -24,7 +26,7 @@ HEADERS = {
 }
 
 _last_request_time: float = 0.0
-MIN_REQUEST_INTERVAL = 1.5  # seconds between requests
+MIN_REQUEST_INTERVAL = 2.5  # seconds between requests
 
 
 def _rate_limit():
@@ -34,6 +36,19 @@ def _rate_limit():
     if elapsed < MIN_REQUEST_INTERVAL:
         time.sleep(MIN_REQUEST_INTERVAL - elapsed)
     _last_request_time = time.time()
+
+
+def _session() -> requests.Session:
+    retry = Retry(
+        total=3,
+        backoff_factor=2,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+    )
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    session.mount("http://", HTTPAdapter(max_retries=retry))
+    return session
 
 
 def get_sport_slug(sport: str) -> str:
@@ -47,7 +62,8 @@ def fetch_games_page(sport: str) -> BeautifulSoup:
     slug = get_sport_slug(sport)
     url = f"{BASE_URL}/{slug}/"
     _rate_limit()
-    resp = requests.get(url, headers=HEADERS, timeout=15)
+    session = _session()
+    resp = session.get(url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
     resp.encoding = "utf-8"
     return BeautifulSoup(resp.text, "lxml")
@@ -57,7 +73,8 @@ def fetch_game_page(sport: str, game_id: str) -> BeautifulSoup:
     slug = get_sport_slug(sport)
     url = f"{BASE_URL}/{slug}/{game_id}"
     _rate_limit()
-    resp = requests.get(url, headers=HEADERS, timeout=15)
+    session = _session()
+    resp = session.get(url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
     resp.encoding = "utf-8"
     return BeautifulSoup(resp.text, "lxml")
